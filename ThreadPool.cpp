@@ -1,12 +1,14 @@
 #include "ThreadPool.h"
 
-ThreadPool::ThreadPool(int minvalue, int maxvalue) : livenum(minvalue), busynum(0), minvalue(minvalue), maxvalue(maxvalue), exitvalue(0), shutdown(true)
+ThreadPool::ThreadPool(int minvalue, int maxvalue) : 
+stopadd(false),livenum(minvalue), busynum(0), minvalue(minvalue), maxvalue(maxvalue), exitvalue(0), shutdown(true)
 {
     queue = new TaskQueue();
 
     pthread_mutex_init(&poolMutex, nullptr);
     pthread_mutex_init(&busyMutex, nullptr);
     pthread_cond_init(&isnull, nullptr);
+    pthread_cond_init(&queuenull, nullptr);
 
     workerId.resize(maxvalue, 0);
 
@@ -31,6 +33,7 @@ void *ThreadPool::worker(void *arg)
                 pthread_mutex_unlock(&pool->poolMutex);
                 pool->threadExit();
             }
+            pthread_cond_broadcast(&pool->queuenull);
             pthread_cond_wait(&pool->isnull, &pool->poolMutex);
         }
         if (pool->shutdown == false)
@@ -132,17 +135,18 @@ void *ThreadPool::manager(void *arg)
     pthread_exit(nullptr);
 }
 
-void ThreadPool::addTask(Task task)
+bool ThreadPool::addTask(Task task)
 {
     pthread_mutex_lock(&this->poolMutex);
-    if (this->shutdown == false)
+    if (this->stopadd == true)
     {
         pthread_mutex_unlock(&this->poolMutex);
-        return;
+        return false;
     }
     this->queue->taskAdd(task);
     pthread_cond_signal(&this->isnull);
     pthread_mutex_unlock(&this->poolMutex);
+    return true;
 }
 
 int ThreadPool::getLivenum()
@@ -163,9 +167,13 @@ int ThreadPool::getBugynum()
 
 ThreadPool::~ThreadPool()
 {
+
     std::vector<pthread_t> toJoin;
 
     pthread_mutex_lock(&this->poolMutex);
+    this->stopadd=true;
+    while(this->queue->taskSize()>0)
+        pthread_cond_wait(&queuenull,&poolMutex);
     this->shutdown = false;
     for (int i = 0; i < maxvalue; ++i)
     {
@@ -196,4 +204,5 @@ ThreadPool::~ThreadPool()
     pthread_mutex_destroy(&poolMutex);
     pthread_mutex_destroy(&busyMutex);
     pthread_cond_destroy(&isnull);
+    pthread_cond_destroy(&queuenull);
 }

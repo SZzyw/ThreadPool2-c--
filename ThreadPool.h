@@ -15,11 +15,14 @@ public:
 
     ~ThreadPool();
 
-    void addTask(Task);//添加任务
+    bool addTask(Task);//添加任务
 
     int getLivenum();//获取存活的线程数量
 
     int getBugynum();//获取正在忙的线程数量
+
+    ThreadPool(const ThreadPool&)=delete;
+    ThreadPool& operator=(const ThreadPool&)=delete;
 
 private:
     static void* worker(void *arg);//工作线程函数
@@ -41,10 +44,12 @@ private:
     std::vector<pthread_t> exitId;//已经删除待回收的线程
 
     bool shutdown;//true正常运行，false停止运行
+    bool stopadd;//true停止添加任务
 
     pthread_mutex_t poolMutex;//锁整个线程
     pthread_mutex_t busyMutex;//锁busynum
     pthread_cond_t isnull;//锁任务队列为空
+    pthread_cond_t queuenull;//任务队列是否为空
 };
 
 #endif // THREADPOOL
