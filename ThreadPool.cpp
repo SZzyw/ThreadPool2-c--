@@ -59,7 +59,10 @@ void ThreadPool::threadExit()
     {
         if (this->workerId[i] == pthread_self())
         {
+            pthread_mutex_lock(&poolMutex);
+            exitId.push_back(workerId[i]);
             this->workerId[i] = 0;
+            pthread_mutex_unlock(&poolMutex);
             break;
         }
     }
@@ -75,6 +78,7 @@ void *ThreadPool::manager(void *arg)
 
         pthread_mutex_lock(&pool->poolMutex);
         int livenum = pool->livenum;
+        int exitIdSize = pool->exitId.size();
         pthread_mutex_unlock(&pool->poolMutex);
         pthread_mutex_lock(&pool->busyMutex);
         int busynum = pool->busynum;
@@ -103,6 +107,19 @@ void *ThreadPool::manager(void *arg)
             pool->exitvalue = 1;
             pthread_mutex_unlock(&pool->poolMutex);
             pthread_cond_broadcast(&pool->isnull);
+        }
+
+        if (exitIdSize > 10)
+        {
+            std::vector<pthread_t> toJoin;
+            pthread_mutex_lock(&pool->poolMutex);
+            toJoin.swap(pool->exitId);
+            pthread_mutex_unlock(&pool->poolMutex);
+
+            for (int i = 0; i < toJoin.size(); i++)
+            {
+                pthread_join(toJoin[i], nullptr);
+            }
         }
     }
     pthread_exit(nullptr);
@@ -137,9 +154,16 @@ int ThreadPool::getBugynum()
 ThreadPool::~ThreadPool()
 {
     this->shutdown = false;
-    for (int i = 0; i < this->maxvalue + 10; i++)
+    pthread_cond_broadcast(&isnull);
+    pthread_join(managerId, nullptr);
+    for (int i = 0; i < this->maxvalue; i++)
     {
-        pthread_cond_broadcast(&isnull);
+        if (this->workerId[i] != 0)
+            pthread_join(this->workerId[i], nullptr);
+    }
+    for (int i = 0; i < this->exitId.size(); i++)
+    {
+        pthread_join(this->exitId[i], nullptr);
     }
     delete (this->queue);
     this->queue = nullptr;

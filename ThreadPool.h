@@ -38,6 +38,7 @@ private:
 
     pthread_t managerId;//管理者线程
     std::vector<pthread_t> workerId;//工作者线程
+    std::vector<pthread_t> exitId;//已经删除待回收的线程
 
     bool shutdown;//true正常运行，false停止运行
 
