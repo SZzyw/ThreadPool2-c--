@@ -72,13 +72,17 @@ void ThreadPool::threadExit()
 void *ThreadPool::manager(void *arg)
 {
     ThreadPool *pool = (ThreadPool *)arg;
-    while (pool->shutdown)
+    pthread_mutex_lock(&pool->poolMutex);
+    bool shutdown=pool->shutdown;
+    pthread_mutex_unlock(&pool->poolMutex);
+    while (shutdown)
     {
         sleep(3);
 
         pthread_mutex_lock(&pool->poolMutex);
         int livenum = pool->livenum;
         int exitIdSize = pool->exitId.size();
+        int queueSize = pool->queue->taskSize();
         pthread_mutex_unlock(&pool->poolMutex);
         pthread_mutex_lock(&pool->busyMutex);
         int busynum = pool->busynum;
@@ -86,7 +90,7 @@ void *ThreadPool::manager(void *arg)
         int maxvalue = pool->maxvalue;
         int minvalue = pool->minvalue;
 
-        if (pool->queue->taskSize() > livenum && livenum < maxvalue)
+        if (queueSize > livenum && livenum < maxvalue)
         {
             pthread_mutex_lock(&pool->poolMutex);
             for (int i = 0; i < maxvalue && pool->shutdown; i++)
@@ -121,18 +125,24 @@ void *ThreadPool::manager(void *arg)
                 pthread_join(toJoin[i], nullptr);
             }
         }
+        pthread_mutex_lock(&pool->poolMutex);
+        shutdown=pool->shutdown;
+        pthread_mutex_unlock(&pool->poolMutex);
     }
     pthread_exit(nullptr);
 }
 
 void ThreadPool::addTask(Task task)
 {
+    pthread_mutex_lock(&this->poolMutex);
     if (this->shutdown == false)
     {
+        pthread_mutex_unlock(&this->poolMutex);
         return;
     }
     this->queue->taskAdd(task);
     pthread_cond_signal(&this->isnull);
+    pthread_mutex_unlock(&this->poolMutex);
 }
 
 int ThreadPool::getLivenum()
@@ -153,7 +163,9 @@ int ThreadPool::getBugynum()
 
 ThreadPool::~ThreadPool()
 {
+    pthread_mutex_lock(&this->poolMutex);
     this->shutdown = false;
+    pthread_mutex_unlock(&this->poolMutex);
     pthread_cond_broadcast(&isnull);
     pthread_join(managerId, nullptr);
     for (int i = 0; i < this->maxvalue; i++)
