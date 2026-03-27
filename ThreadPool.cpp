@@ -55,17 +55,17 @@ void *ThreadPool::worker(void *arg)
 
 void ThreadPool::threadExit()
 {
+    pthread_mutex_lock(&poolMutex);
     for (int i = 0; i < this->maxvalue; i++)
     {
         if (this->workerId[i] == pthread_self())
         {
-            pthread_mutex_lock(&poolMutex);
             exitId.push_back(workerId[i]);
             this->workerId[i] = 0;
-            pthread_mutex_unlock(&poolMutex);
             break;
         }
     }
+    pthread_mutex_unlock(&poolMutex);
     pthread_exit(nullptr);
 }
 
@@ -73,7 +73,7 @@ void *ThreadPool::manager(void *arg)
 {
     ThreadPool *pool = (ThreadPool *)arg;
     pthread_mutex_lock(&pool->poolMutex);
-    bool shutdown=pool->shutdown;
+    bool shutdown = pool->shutdown;
     pthread_mutex_unlock(&pool->poolMutex);
     while (shutdown)
     {
@@ -126,7 +126,7 @@ void *ThreadPool::manager(void *arg)
             }
         }
         pthread_mutex_lock(&pool->poolMutex);
-        shutdown=pool->shutdown;
+        shutdown = pool->shutdown;
         pthread_mutex_unlock(&pool->poolMutex);
     }
     pthread_exit(nullptr);
@@ -163,20 +163,33 @@ int ThreadPool::getBugynum()
 
 ThreadPool::~ThreadPool()
 {
+    std::vector<pthread_t> toJoin;
+
     pthread_mutex_lock(&this->poolMutex);
     this->shutdown = false;
+    for (int i = 0; i < maxvalue; ++i)
+    {
+        if (workerId[i] != 0)
+        {
+            toJoin.push_back(workerId[i]);
+            workerId[i] = 0;
+        }
+    }
+    for (pthread_t tid : exitId)
+    {
+        toJoin.push_back(tid);
+    }
+    exitId.clear();
     pthread_mutex_unlock(&this->poolMutex);
+
     pthread_cond_broadcast(&isnull);
     pthread_join(managerId, nullptr);
-    for (int i = 0; i < this->maxvalue; i++)
+
+    for (int i = 0; i < toJoin.size(); i++)
     {
-        if (this->workerId[i] != 0)
-            pthread_join(this->workerId[i], nullptr);
+        pthread_join(toJoin[i], nullptr);
     }
-    for (int i = 0; i < this->exitId.size(); i++)
-    {
-        pthread_join(this->exitId[i], nullptr);
-    }
+
     delete (this->queue);
     this->queue = nullptr;
 
