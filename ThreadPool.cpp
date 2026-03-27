@@ -113,7 +113,7 @@ void *ThreadPool::manager(void *arg)
             pthread_cond_broadcast(&pool->isnull);
         }
 
-        if (exitIdSize > 10)
+        if (exitIdSize > 3)
         {
             std::vector<pthread_t> toJoin;
             pthread_mutex_lock(&pool->poolMutex);
