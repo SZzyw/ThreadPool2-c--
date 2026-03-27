@@ -1,8 +1,14 @@
 #include "ThreadPool.h"
+#include <stdexcept>
 
-ThreadPool::ThreadPool(int minvalue, int maxvalue) : 
-stopadd(false),livenum(minvalue), busynum(0), minvalue(minvalue), maxvalue(maxvalue), exitvalue(0), shutdown(true)
+ThreadPool::ThreadPool(int minvalue, int maxvalue) :
+    livenum(minvalue), busynum(0), minvalue(minvalue), maxvalue(maxvalue), exitvalue(0), shutdown(true), stopadd(false)
 {
+    if (minvalue < 0 || maxvalue <= 0 || minvalue > maxvalue)
+    {
+        throw std::invalid_argument("ThreadPool arguments must satisfy 0 <= minvalue <= maxvalue and maxvalue > 0");
+    }
+
     queue = new TaskQueue();
 
     pthread_mutex_init(&poolMutex, nullptr);
@@ -123,9 +129,9 @@ void *ThreadPool::manager(void *arg)
             toJoin.swap(pool->exitId);
             pthread_mutex_unlock(&pool->poolMutex);
 
-            for (int i = 0; i < toJoin.size(); i++)
+            for (pthread_t tid : toJoin)
             {
-                pthread_join(toJoin[i], nullptr);
+                pthread_join(tid, nullptr);
             }
         }
         pthread_mutex_lock(&pool->poolMutex);
@@ -133,6 +139,7 @@ void *ThreadPool::manager(void *arg)
         pthread_mutex_unlock(&pool->poolMutex);
     }
     pthread_exit(nullptr);
+    return nullptr;
 }
 
 bool ThreadPool::addTask(Task task)
@@ -193,9 +200,9 @@ ThreadPool::~ThreadPool()
     pthread_cond_broadcast(&isnull);
     pthread_join(managerId, nullptr);
 
-    for (int i = 0; i < toJoin.size(); i++)
+    for (pthread_t tid : toJoin)
     {
-        pthread_join(toJoin[i], nullptr);
+        pthread_join(tid, nullptr);
     }
 
     delete (this->queue);
